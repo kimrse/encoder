@@ -17,8 +17,8 @@ def extender(bits):
         while len(bits) < 128:
             bits += '0'
         for i in range(0, 128, 32):   
-            part = bits[i:i+32];  
-            bits_divided.append(part);
+            part = bits[i:i+32]
+            bits_divided.append(part)
         return bits_divided
     else:
         raise 'len is more than 128'
@@ -37,6 +37,16 @@ def decoder(bits_arr):
         bytes_arr.append(int(byte))
     decoded_txt = bytes(bytes_arr).decode('utf-8')
     return decoded_txt
+
+#len(num1) == len(num2)
+def bit_xor(num1, num2):
+    xored = ''
+    res = list(zip(num1, num2))
+    for i, j in res:
+        res = int(i) ^ int(j)
+        xored += str(res)
+    return xored
+
 
 
 txt_bits = get_bits(txt)
