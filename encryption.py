@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+#-*- coding: utf-8 -*-
 import timeit
 
 S_BOX = [
@@ -205,23 +205,24 @@ def main():
         else:
             
             txt_bits = get_bits(txt)
-            bits_ext = extender(txt_bits)
-            txt_decoded = get_txt(bits_ext)
+            txt_extended = extender(txt_bits)
             subkeys = subkeys_gen(key, P_BOX)
+            encrypted_txt = encrypt(txt_extended, subkeys)
             
             print('source:', txt)
             print('bytes:', list(bytearray(txt, 'utf-8')))
             print('bits:', txt_bits)
-            print('extended bits:', bits_ext)
-            print('decode:', txt_decoded)
+            print('extended txt_bits:', txt_extended)
             print('subkeys:', subkeys)
-            print(algorithm(txt))
+            print('encrypted_txt(bin): \n', encrypted_txt)
 
 
 def get_bits(txt: str, hex_str: bool=False) -> list:
     bits = []
     if hex_str:
         bit_str = '{0:08b}'.format(int(txt, 16))
+        while len(bit_str) < 32:
+            bit_str = '0' + bit_str
         for i in range(0, len(bit_str), 8):
             part = str(bit_str[i:i+8])
             bits.append(part)
@@ -281,7 +282,6 @@ def bit_sum(num1: str, num2: str) -> str:
 
 
 # def subkeys_gen(key: str, p_box: list) -> list:
-#     p_bits, subkeys = [], []
 #     bit_key = get_bits(key)
 #     if len(''.join(bit_key)) < 576:
 #         key_extended = extender(bit_key, length=576, width=32)
@@ -289,16 +289,14 @@ def bit_sum(num1: str, num2: str) -> str:
 #             p_bit = ''.join(get_bits(hex(p_box[i]), hex_str=True))
 #             if len(p_bit) < 32:
 #                 p_bit = ''.join(extender(p_bit, length=32, width=8))
-#             p_bits.append(p_bit)
-#         for i in range(18):
-#             step = bit_xor(p_bits[i], key_extended[i])
-#             subkeys.append(step)
+#             p_box[i] = bit_xor(p_bit, key_extended[i])
+#         return p_box
 #     else:
 #         raise ValueError(f'The key is longer than {576} bits!')
-#     return subkeys
 
 
 def subkeys_gen(key: str, p_box: list) -> list:
+    subkeys = []
     bit_key = get_bits(key)
     if len(''.join(bit_key)) < 576:
         key_extended = extender(bit_key, length=576, width=32)
@@ -306,43 +304,49 @@ def subkeys_gen(key: str, p_box: list) -> list:
             p_bit = ''.join(get_bits(hex(p_box[i]), hex_str=True))
             if len(p_bit) < 32:
                 p_bit = ''.join(extender(p_bit, length=32, width=8))
-            p_box[i] = bit_xor(p_bit, key_extended[i])
+            subkeys.append(bit_xor(p_bit, key_extended[i]))
+        return subkeys
     else:
         raise ValueError(f'The key is longer than {576} bits!')
 
 
-def function(xl: str, S_BOX: list) -> str:
-    xa, xb = int(xl[0:8], 2), int(xl[8:16], 2)
-    xc, xd = int(xl[16:24], 2), int(xl[24:32], 2)
-    s1, s2 = ''.join(get_bits(hex(S_BOX[0][xa]), hex_str=True)), ''.join(get_bits(hex(S_BOX[1][xb]), hex_str=True))
-    s3, s4 = ''.join(get_bits(hex(S_BOX[2][xc]), hex_str=True)), ''.join(get_bits(hex(S_BOX[3][xd]), hex_str=True))
-    s1 = bit_sum(s1, s2)
-    s1 = bit_xor(s1, s3)
-    return bit_sum(s1, s4)
-
-
-def algorithm(txt: str, subkey: str) -> str:
-    txt_bits = get_bits(txt)
-    txt = extender(txt_bits)[0]
-    xl_base, xr = txt[0:32], txt[32:64]
+def algorithm(txt_part: str, subkey: str, S_BOX: list) -> str:
+    
+    def function(xl: str, S_BOX: list) -> str:
+        xa, xb = int(xl[0:8], 2), int(xl[8:16], 2)
+        xc, xd = int(xl[16:24], 2), int(xl[24:32], 2)
+        s1, s2 = ''.join(get_bits(hex(S_BOX[0][xa]), hex_str=True)), ''.join(get_bits(hex(S_BOX[1][xb]), hex_str=True))
+        s3, s4 = ''.join(get_bits(hex(S_BOX[2][xc]), hex_str=True)), ''.join(get_bits(hex(S_BOX[3][xd]), hex_str=True))
+        s1 = bit_sum(s1, s2)
+        s1 = bit_xor(s1, s3)
+        return bit_sum(s1, s4)
+    
+    xl_base, xr = txt_part[0:32], txt_part[32:64]
+    #print('xl_base:\n',len(xl_base), len(xr))
     xl = bit_xor(xl_base, subkey)
-    xl = function(xl)
+    xl = function(xl, S_BOX)
     xl = bit_xor(xl, xr)
     xr = xl_base
+    #print('xl, xr:\n', xl, len(xl), '\n',xr, len(xr))
     return xl + xr
 
 
 def post(output: str, p_box: list) -> str:
     xl, xr = output[0:32], output[32:64]
-    xl_p = bit_xor(xl, p_box[1])
-    xr_p = bit_xor(xr, p_box[0])
+    xl_p = bit_xor(xl, p_box[17])
+    xr_p = bit_xor(xr, p_box[16])
     xl, xr = xr_p, xl_p
     return xl + xr
 
 
-def encrypt(txt: str, subkeys: list) -> list:
-    #for i in range():
-    ...
+def encrypt(txt_extended: list, subkeys: list) -> str:
+    encrypted_txt = ''
+    for i in range(len(txt_extended)):
+        alg_round = txt_extended[i]
+        for j in range(16):
+            alg_round = algorithm(alg_round, subkeys[j], S_BOX)
+        encrypted_txt += post(alg_round, subkeys)
+    return encrypted_txt
 
 
 if __name__ == '__main__':
