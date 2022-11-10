@@ -192,53 +192,49 @@ P_BOX = [
 
 
 def main(txt: str, key: str) -> str:
-
-    txt_bits = get_bits(txt)
+    txt_bits = bit_splitter(get_bits(txt))
     txt_bytes = list(bytearray(txt, 'utf-8'))
-    txt_extended = extender(txt_bits)
     subkeys = subkeys_gen(key, P_BOX)
-    encrypted_txt = encrypt(txt_extended, subkeys)
-    encrypted_bytes = get_bytes(encrypted_txt)
-    divided = []
-    
-    for i in range(0, len(encrypted_txt), 8):
-        part = str(encrypted_txt[i:i+8])
-        divided.append(part)
-        print(divided)
-    #print('source:', txt)
-    
-    print('bytes:', list(bytearray(txt, 'utf-8')))
-    print('bits:', txt_bits)
-    print('extended txt_bits:', txt_extended)
-    print('subkeys:', subkeys)
-    print(divided)
-    #print('encrypted_txt(bin): \n', encrypted_txt)
+    encrypted_txt = encrypt(txt_bits, subkeys)
+    encrypted_bits = bit_splitter(encrypted_txt)
+    encrypted_bytes = bits_to_bytes(encrypted_txt)
     decoded_iso_8859_1 = get_txt(encrypted_txt)
-    encrypted_dict = {'txt_bits': txt_bits, 'txt_bytes': txt_bytes, 
-            'encrypted_bits': divided, 'encrypted_bytes': encrypted_bytes, 'encrypted_iso': decoded_iso_8859_1
+    
+    encryption_log = {'txt_bits': txt_bits, 'txt_bytes': txt_bytes, 
+            'encrypted_bits': encrypted_bits, 'encrypted_bytes': encrypted_bytes, 
+            'encrypted_iso': decoded_iso_8859_1
     }
     
-    return encrypted_dict
+    return encryption_log
+
+
+def bit_splitter(bits_str: str) -> str:
+    bits_divided = []
+    for i in range(0, len(bits_str), 8):
+        part = str(bits_str[i:i+8])
+        if part != '0'*8:
+            bits_divided.append(part)
+    return bits_divided
 
 
 def get_bits(txt: str, hex_str: bool=False) -> list:
-    bits = []
+    bits = ''
     if hex_str:
         bit_str = '{0:08b}'.format(int(txt, 16))
         while len(bit_str) < 32:
             bit_str = '0' + bit_str
         for i in range(0, len(bit_str), 8):
             part = str(bit_str[i:i+8])
-            bits.append(part)
+            bits += part
     else:
         byte_arr = bytearray(txt, 'utf-8')
         for byte in byte_arr:
             bit = format(byte, '08b')
-            bits.append(bit)
+            bits += bit
     return bits
 
 
-def extender(bits: list, length: int=1024, width: int=64) -> list:
+def extender(bits: list, length: int=64, width: int=64) -> list:
     bits_divided = []
     bits = ''.join(bits)
     if len(bits) < length:
@@ -254,11 +250,8 @@ def extender(bits: list, length: int=1024, width: int=64) -> list:
 
 def get_txt(bits_arr: list) -> str:
     bits_divided, bytes_arr = [], []
-    bits_arr = ''.join(bits_arr)
-    for i in range(0, len(bits_arr), 8):
-        part = str(bits_arr[i:i+8])
-        if part != '0'*8:
-            bits_divided.append(part)
+    bits_str = ''.join(bits_arr)
+    bits_divided = bit_splitter(bits_str)
     for i in bits_divided:
         byte = int(i, 2)
         bytes_arr.append(int(byte))
@@ -266,16 +259,13 @@ def get_txt(bits_arr: list) -> str:
     return decoded_txt
 
 
-def get_bytes(bits_arr: list) -> str:
-    bits_divided, bytes_arr = [], []
-    bits_arr = ''.join(bits_arr)
-    for i in range(0, len(bits_arr), 8):
-        part = str(bits_arr[i:i+8])
-        if part != '0'*8:
-            bits_divided.append(part)
+def bits_to_bytes(bits_arr: list) -> str:
+    bytes_arr = []
+    bits_str = ''.join(bits_arr)
+    bits_divided = bit_splitter(bits_str)
     for i in bits_divided:
         byte = int(i, 2)
-        bytes_arr.append(int(byte))
+        bytes_arr.append(byte)
     return bytes_arr
 
 
@@ -295,20 +285,6 @@ def bit_sum(num1: str, num2: str) -> str:
         res = int(i) | int(j)
         summ += str(res)
     return summ
-
-
-# def subkeys_gen(key: str, p_box: list) -> list:
-#     bit_key = get_bits(key)
-#     if len(''.join(bit_key)) < 576:
-#         key_extended = extender(bit_key, length=576, width=32)
-#         for i in range(18):
-#             p_bit = ''.join(get_bits(hex(p_box[i]), hex_str=True))
-#             if len(p_bit) < 32:
-#                 p_bit = ''.join(extender(p_bit, length=32, width=8))
-#             p_box[i] = bit_xor(p_bit, key_extended[i])
-#         return p_box
-#     else:
-#         raise ValueError(f'The key is longer than {576} bits!')
 
 
 def subkeys_gen(key: str, p_box: list) -> list:
@@ -338,32 +314,24 @@ def algorithm(txt_part: str, subkey: str, S_BOX: list) -> str:
         return bit_sum(s1, s4)
     
     xl_base, xr = txt_part[0:32], txt_part[32:64]
-    #print('xl_base:\n',len(xl_base), len(xr))
     xl = bit_xor(xl_base, subkey)
     xl = function(xl, S_BOX)
     xl = bit_xor(xl, xr)
     xr = xl_base
-    #print('xl, xr:\n', xl, len(xl), '\n',xr, len(xr))
     return xl + xr
 
 
-def post(output: str, p_box: list) -> str:
-    xl, xr = output[0:32], output[32:64]
-    xl_p = bit_xor(xl, p_box[17])
-    xr_p = bit_xor(xr, p_box[16])
-    xl, xr = xr_p, xl_p
-    return xl + xr
-
-
-def encrypt(txt_extended: list, subkeys: list) -> str:
-    encrypted_txt = ''
+def encrypt(txt_bits: list, subkeys: list) -> str:
+    encrypted_bits = ''
+    txt_extended = extender(txt_bits)
     for i in range(len(txt_extended)):
         alg_round = txt_extended[i]
         for j in range(16):
             alg_round = algorithm(alg_round, subkeys[j], S_BOX)
-        encrypted_txt += post(alg_round, subkeys)
-    return encrypted_txt
-
-
-# if __name__ == '__main__':
-#     main()
+            
+        xl, xr = alg_round[0:32], alg_round[32:64]
+        xl_p = bit_xor(xl, subkeys[17])
+        xr_p = bit_xor(xr, subkeys[16])
+        xl, xr = xr_p, xl_p
+        encrypted_bits += xl + xr
+    return encrypted_bits
